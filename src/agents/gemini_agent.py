@@ -2,18 +2,18 @@ import os
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# 1. Automatically adapt to local network proxy settings
-proxy_url = "http://127.0.0.1:7897" 
-os.environ['HTTP_PROXY'] = proxy_url
-os.environ['HTTPS_PROXY'] = proxy_url
+# Only use proxy in local development
+if os.getenv('ENVIRONMENT') != 'production':
+    proxy_url = "http://127.0.0.1:7897"
+    os.environ['HTTP_PROXY'] = proxy_url
+    os.environ['HTTPS_PROXY'] = proxy_url
 
-# 2. Force isolate GCP global credentials conflict
+# Force isolate GCP global credentials conflict
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = ""
 
 load_dotenv()
 
-# 3. Read Gemini API Key safely
-api_key = os.getenv('GEMINI_API_KEY') or "AQ.Ab8RN6Jas3WPu28GT3cVp6ignbdpVsEutK0KO2MUUvz8vC13bw"
+api_key = os.getenv('GEMINI_API_KEY')
 genai.configure(api_key=api_key)
 
 MOCK_GCP_METRICS = {
