@@ -14,6 +14,7 @@
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
     @keyframes glow  { 0%,100%{opacity:0.7} 50%{opacity:1} }
+    @keyframes spin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
     ::-webkit-scrollbar { width: 3px; }
     ::-webkit-scrollbar-track { background: #060606; }
     ::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
@@ -28,7 +29,6 @@ const { useState, useEffect, useRef } = React;
 const MONO = "'JetBrains Mono', monospace";
 const SYNE = "'Syne', sans-serif";
 
-/* ── data ── */
 const PIPELINES_DEFAULT = [
   { id: "2566156044", status: "failed",  action: "RCA Created", time: "08:00:08" },
   { id: "2566154102", status: "success", action: "Monitored",   time: "07:45:22" },
@@ -38,7 +38,7 @@ const PIPELINES_DEFAULT = [
 
 const LOGS_DEFAULT = [
   { id: 1,  time: "08:00:01", icon: "🔔", text: "Webhook intercepted: pipeline #2566156044", color: "#F59E0B" },
-  { id: 2,  time: "08:00:02", icon: "🐾", text: "Fetching job logs via GitLab MCP...",        color: "#60a5fa" },
+  { id: 2,  time: "08:00:02", icon: "🐾", text: "Fetching job logs via GitLab API...",        color: "#60a5fa" },
   { id: 3,  time: "08:00:03", icon: "📦", text: "Log size: 2.4KB · 3 jobs analyzed",          color: "#60a5fa" },
   { id: 4,  time: "08:00:04", icon: "🤖", text: "Invoking Gemini-2.0-Flash...",               color: "#a78bfa" },
   { id: 5,  time: "08:00:06", icon: "💭", text: "Analyzing root cause patterns...",           color: "#a78bfa" },
@@ -48,32 +48,6 @@ const LOGS_DEFAULT = [
   { id: 9,  time: "08:00:09", icon: "👀", text: "Watching for next event...",                 color: "#999", blink: true },
 ];
 
-const TRIGGER_EXTRA = [
-  { id: 10, time: null,       icon: "─",  text: "──────────────────────────────",             color: "#2a2a2a" },
-  { id: 11, time: "08:01:00", icon: "🔔", text: "Manual trigger fired",                       color: "#F59E0B" },
-  { id: 12, time: "08:01:01", icon: "🐾", text: "Fetching job logs via GitLab MCP...",        color: "#60a5fa" },
-  { id: 13, time: "08:01:03", icon: "🤖", text: "Invoking Gemini-2.0-Flash...",               color: "#a78bfa" },
-  { id: 14, time: "08:01:05", icon: "✓",  text: "RCA generated in 4.0s",                     color: "#4ade80" },
-  { id: 15, time: "08:01:05", icon: "🎫", text: "Issue #3 published to GitLab",               color: "#4ade80" },
-  { id: 16, time: "08:01:06", icon: "🌿", text: "Branch fix/pipeline-manual created",         color: "#4ade80" },
-  { id: 17, time: "08:01:06", icon: "👀", text: "Watching for next event...",                 color: "#999", blink: true },
-];
-
-const REPORT_DEFAULT = {
-  title: "Gigi Failure Diagnosis Report [Job #999]",
-  rca: "Woof! Some sloppy JavaScript code tried to fetch a toy from a variable that was completely empty — barking about an 'undefined' mess at master.js line 12!",
-  fix: "Inspect master.js line 12 and identify which variable is undefined before accessing its properties.",
-  action: "Branch fix/pipeline-2566156044 created · Issue #2 published",
-};
-
-const REPORT_TRIGGERED = {
-  title: "Gigi Failure Diagnosis Report [Job #1024]",
-  rca: "Woof! The build script couldn't find the required Node.js version. The .nvmrc file specifies v18 but the runner only has v16 installed!",
-  fix: "Update the GitLab CI runner image to node:18-alpine, or add a setup step to install the correct Node version via nvm.",
-  action: "Branch fix/pipeline-manual created · Issue #3 published",
-};
-
-/* ── tiny components ── */
 function GigiPixel({ size }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" style={{ imageRendering: "pixelated" }}>
@@ -121,12 +95,9 @@ function CountUp({ target, duration }) {
 
 function Grad({ children, a, b }) {
   return (
-    <span style={{
-      background: "linear-gradient(90deg," + a + "," + b + ")",
-      WebkitBackgroundClip: "text",
-      WebkitTextFillColor: "transparent",
-      backgroundClip: "text",
-    }}>{children}</span>
+    <span style={{ background: "linear-gradient(90deg," + a + "," + b + ")", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
+      {children}
+    </span>
   );
 }
 
@@ -176,41 +147,107 @@ function ReportCard({ report }) {
         <span style={{ color: "#818CF8" }}>Fix: </span>
         <span style={{ color: "#999" }}>{report.fix}</span>
       </div>
-      <div style={{ color: "#4ade80", marginTop: 8, fontSize: 10, animation: "glow 2s infinite" }}>
-        ✓ {report.action}
-      </div>
+      {report.action && (
+        <div style={{ color: "#4ade80", marginTop: 8, fontSize: 10, animation: "glow 2s infinite" }}>
+          ✓ {report.action}
+        </div>
+      )}
+      {report.issue && (
+        <a href={report.issue} target="_blank" rel="noreferrer"
+          style={{ display: "inline-block", marginTop: 6, fontSize: 10, color: "#60a5fa", textDecoration: "none" }}>
+          🎫 View GitLab Issue →
+        </a>
+      )}
     </div>
   );
 }
 
-/* ── main app ── */
+function now() {
+  return new Date().toTimeString().slice(0, 8);
+}
+
 function Dashboard() {
   const [logs, setLogs]           = useState(LOGS_DEFAULT);
   const [pipelines, setPipelines] = useState(PIPELINES_DEFAULT);
-  const [report, setReport]       = useState(REPORT_DEFAULT);
-  const [running, setRunning]     = useState(false);
-  const [triggered, setTriggered] = useState(false);
+  const [report, setReport]       = useState({
+    title: "Gigi Failure Diagnosis Report [Job #999]",
+    rca: "Woof! Some sloppy JavaScript code tried to fetch a toy from a variable that was completely empty — barking about an 'undefined' mess at master.js line 12!",
+    fix: "Inspect master.js line 12 and identify which variable is undefined before accessing its properties.",
+    action: "Branch fix/pipeline-2566156044 created · Issue #2 published",
+  });
+  const [inputId, setInputId]     = useState("");
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState(null);
 
-  function handleTrigger() {
-    if (running || triggered) return;
-    setRunning(true);
+  function addLog(icon, text, color, blink) {
+    setLogs(prev => {
+      var base = prev.filter(function(l) { return !l.blink; });
+      var next = { id: Date.now() + Math.random(), time: now(), icon: icon, text: text, color: color || "#e0e0e0" };
+      if (blink) next.blink = true;
+      return base.concat([next]);
+    });
+  }
 
-    setTimeout(function() {
-      // append trigger logs (remove last blink line first)
-      setLogs(function(prev) {
-        var base = prev.filter(function(l) { return !l.blink; });
-        return base.concat(TRIGGER_EXTRA);
+  async function handleAnalyze() {
+    var pid = inputId.trim();
+    if (!pid || loading) return;
+    setError(null);
+    setLoading(true);
+
+    addLog("🔔", "Manual trigger: pipeline #" + pid, "#F59E0B");
+    addLog("🐾", "Fetching job logs via GitLab API...", "#60a5fa");
+
+    try {
+      var res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipeline_id: parseInt(pid) }),
       });
-      // add new pipeline row at top
+      var data = await res.json();
+
+      if (data.status === "error") {
+        addLog("❌", "Error: " + data.message, "#f87171");
+        setError(data.message);
+        setLoading(false);
+        return;
+      }
+
+      addLog("🤖", "Invoking Gemini-2.0-Flash...", "#a78bfa");
+      addLog("✓",  "RCA generated · Job #" + (data.job_id || "—"), "#4ade80");
+
+      if (data.branch) addLog("🌿", "Branch " + data.branch + " created", "#4ade80");
+      if (data.issue)  addLog("🎫", "Issue published to GitLab", "#4ade80");
+      addLog("👀", "Watching for next event...", "#999", true);
+
+      // update pipeline table
       setPipelines(function(prev) {
-        var newRow = { id: "2566" + Math.floor(Math.random()*100000), status: "failed", action: "RCA Created", time: "08:01:06" };
+        var newRow = {
+          id: pid,
+          status: data.pipeline_status || "failed",
+          action: "RCA Created",
+          time: now(),
+        };
         return [newRow].concat(prev.slice(0, 3));
       });
+
       // update report
-      setReport(REPORT_TRIGGERED);
-      setRunning(false);
-      setTriggered(true);
-    }, 1000);
+      setReport({
+        title: "Gigi Failure Diagnosis Report [Job #" + (data.job_id || pid) + "]",
+        rca: data.rca || "No RCA returned.",
+        fix: data.fix || "Review the generated GitLab issue for details.",
+        action: [data.branch, data.issue ? "Issue published" : null].filter(Boolean).join(" · "),
+        issue: data.issue,
+      });
+
+    } catch (e) {
+      addLog("❌", "Network error: " + e.message, "#f87171");
+      setError(e.message);
+    }
+    setLoading(false);
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Enter") handleAnalyze();
   }
 
   return (
@@ -245,10 +282,10 @@ function Dashboard() {
 
       {/* metrics */}
       <div style={{ display: "flex", borderBottom: "0.5px solid #1a1a1a" }}>
-        <Metric label="AI INTERCEPTION" value={<span><CountUp target={100} />%</span>}               sub="🟢 All pipelines covered"   sc="#2a5a2a" a="#fff"    b="#ccc"    />
-        <Metric label="AVG. MTTD"       value="14.2s"                                                sub="📉 Reduced by 99.4%"        sc="#2a5a5a" a="#4ade80" b="#2DD4BF" />
-        <Metric label="ACTIONS TAKEN"   value={<CountUp target={42} />}                             sub="🌿 fix/pipeline-* branches" sc="#2a2a5a" a="#818CF8" b="#C084FC" />
-        <Metric label="ANNUAL SAVINGS"  value={<span>$<CountUp target={2620} duration={1800} /></span>} sub="💵 FinOps verified"      sc="#5a3a0a" a="#F59E0B" b="#EF4444" />
+        <Metric label="AI INTERCEPTION" value={<span><CountUp target={100} />%</span>}                   sub="🟢 All pipelines covered"   sc="#2a5a2a" a="#fff"    b="#ccc"    />
+        <Metric label="AVG. MTTD"       value="14.2s"                                                    sub="📉 Reduced by 99.4%"        sc="#2a5a5a" a="#4ade80" b="#2DD4BF" />
+        <Metric label="ACTIONS TAKEN"   value={<CountUp target={42} />}                                 sub="🌿 fix/pipeline-* branches" sc="#2a2a5a" a="#818CF8" b="#C084FC" />
+        <Metric label="ANNUAL SAVINGS"  value={<span>$<CountUp target={2620} duration={1800} /></span>} sub="💵 FinOps verified"          sc="#5a3a0a" a="#F59E0B" b="#EF4444" />
       </div>
 
       {/* main grid */}
@@ -300,23 +337,65 @@ function Dashboard() {
             🐾 GIGI'S COGNITIVE LIVE CONSOLE
           </div>
           <ConsoleView logs={logs} />
+
+          {/* ── real analyze input ── */}
           <div style={{ padding: "14px 16px", borderTop: "0.5px solid #111" }}>
-            <div style={{ fontSize: 10, color: "#666", letterSpacing: "0.15em", marginBottom: 10 }}>⚡ MANUAL SIMULATION TRIGGER</div>
-            <button
-              onClick={handleTrigger}
-              disabled={running || triggered}
-              style={{
-                width: "100%", background: "#0d0d0d",
-                border: "0.5px solid " + (running || triggered ? "#222" : "#333"),
-                borderRadius: 6, padding: "10px 14px",
-                color: running || triggered ? "#555" : "#e0e0e0",
-                fontFamily: MONO, fontSize: 11,
-                cursor: running || triggered ? "not-allowed" : "pointer",
-                textAlign: "left", transition: "all 0.2s",
-              }}
-            >
-              {running ? "🐾 Gigi is running analysis..." : triggered ? "✓ Analysis complete" : "🐾 Force Run Gigi on Pipeline #2566156044"}
-            </button>
+            <div style={{ fontSize: 10, color: "#666", letterSpacing: "0.15em", marginBottom: 10 }}>⚡ ANALYZE A REAL PIPELINE</div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                placeholder="Enter Pipeline ID (e.g. 2566156044)"
+                value={inputId}
+                onChange={function(e) { setInputId(e.target.value); }}
+                onKeyDown={handleKeyDown}
+                disabled={loading}
+                style={{
+                  flex: 1,
+                  background: "#0d0d0d",
+                  border: "0.5px solid #333",
+                  borderRadius: 6,
+                  padding: "9px 12px",
+                  color: "#e0e0e0",
+                  fontFamily: MONO,
+                  fontSize: 11,
+                  outline: "none",
+                }}
+              />
+              <button
+                onClick={handleAnalyze}
+                disabled={loading || !inputId.trim()}
+                style={{
+                  background: loading ? "#0d0d0d" : "#0f1f0f",
+                  border: "0.5px solid " + (loading ? "#222" : "#1a4a1a"),
+                  borderRadius: 6,
+                  padding: "9px 14px",
+                  color: loading ? "#555" : "#4ade80",
+                  fontFamily: MONO,
+                  fontSize: 11,
+                  cursor: loading || !inputId.trim() ? "not-allowed" : "pointer",
+                  whiteSpace: "nowrap",
+                  minWidth: 90,
+                }}
+              >
+                {loading
+                  ? <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ display: "inline-block", width: 10, height: 10, border: "1.5px solid #555", borderTopColor: "#4ade80", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                      Running
+                    </span>
+                  : "🐾 Run Gigi"}
+              </button>
+            </div>
+
+            {error && (
+              <div style={{ marginTop: 8, fontSize: 10, color: "#f87171", fontFamily: MONO }}>
+                ❌ {error}
+              </div>
+            )}
+
+            <div style={{ marginTop: 8, fontSize: 10, color: "#444", fontFamily: MONO }}>
+              Fetches real GitLab logs → Gemini RCA → auto-creates branch + issue
+            </div>
           </div>
         </div>
       </div>
