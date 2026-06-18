@@ -7,21 +7,20 @@ from src.agents.gitlab_agent import GitLabAgent
 from src.agents.gemini_agent import GeminiAgent
 import traceback
 
-# Setup FastAPI App with a premium international description
 app = FastAPI(title="PipelineIQ", description="Intelligent GitLab CI/CD Agent powered by Gemini 🐕")
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
-@app.get("/")
-async def read_index():
-    return FileResponse(os.path.join("static", "index.html"))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+async def read_index():
+    return FileResponse(os.path.join("static", "index.html"))
 
 gitlab_agent = GitLabAgent()
 gemini_agent = GeminiAgent()
@@ -37,17 +36,14 @@ async def process_pipeline_event(pipeline_id: int, status: str):
                 if job['status'] == 'failed':
                     print(f"🔍 [Failed Job Found] Fetching raw logs for Job #{job['id']}...")
                     log = gitlab_agent.get_job_log(job['id'])
-                    
+
                     print(f"🤖 [AI Analysis] Invoking Gemini to analyze logs and generate RCA report...")
                     report = gemini_agent.analyze_failure(
                         job_log=log,
                         job_id=job['id'],
                         pipeline_id=pipeline_id
                     )
-                    
-                    print("✅ [Gigi Report Ready] Preparing to push insights to GitLab...")
-                    
-                    # Automated Git Workflow Action
+
                     branch_name = f"fix/pipeline-{pipeline_id}"
                     try:
                         print(f"🌿 Attempting to create automated hotfix branch: {branch_name} ...")
@@ -64,17 +60,15 @@ async def process_pipeline_event(pipeline_id: int, status: str):
                     break
 
         elif status == "success":
-            print(f"💰 [FinOps Triggered] Pipeline #{pipeline_id} succeeded. Analyzing cost optimization options...")
+            print(f"💰 [FinOps Triggered] Pipeline #{pipeline_id} succeeded.")
             report = gemini_agent.analyze_finops()
             gitlab_agent.create_issue(
                 title=f"🐕 Gigi: Pipeline #{pipeline_id} FinOps Optimization Report",
                 description=report
             )
-            print(f"🎉 [FinOps Success] Cost optimization recommendations published!")
 
     except Exception as e:
         print(f"❌ [Background Error] Severe crash while processing Pipeline #{pipeline_id}: {e}")
-        print("Detailed traceback stack:")
         traceback.print_exc()
 
 
@@ -102,23 +96,101 @@ async def get_pipelines():
     return gitlab_agent.get_pipelines()
 
 
+# ── NEW: synchronous analyze endpoint for the frontend ──────────────────────
+@app.post("/api/analyze")
+async def api_analyze(request: Request):
+    """
+    Called by the frontend input box.
+    Runs the full Gigi analysis synchronously so the UI gets real results back.
+    """
+    body = await request.json()
+    pipeline_id = int(body.get("pipeline_id", 0))
+
+    if not pipeline_id:
+        return {"status": "error", "message": "pipeline_id is required"}
+
+    try:
+        print(f"🚀 [Frontend Trigger] Analyzing Pipeline #{pipeline_id}...")
+
+        # 1. get real status from GitLab
+        pipelines = gitlab_agent.get_pipelines()
+        status = "failed"
+        for p in pipelines:
+            if p["id"] == pipeline_id:
+                status = p["status"]
+                break
+
+        # 2. fetch jobs
+        jobs = gitlab_agent.get_pipeline_jobs(pipeline_id)
+        failed_jobs = [j for j in jobs if j["status"] == "failed"]
+
+        if status != "failed" or not failed_jobs:
+            return {
+                "status": "ok",
+                "pipeline_id": pipeline_id,
+                "pipeline_status": status,
+                "rca": "No failed jobs found — pipeline looks healthy! 🟢",
+                "fix": "Nothing to fix.",
+                "job_id": None,
+                "branch": None,
+                "issue": None,
+            }
+
+        job = failed_jobs[0]
+        log = gitlab_agent.get_job_log(job["id"])
+
+        # 3. real Gemini analysis
+        report = gemini_agent.analyze_failure(
+            job_log=log,
+            job_id=job["id"],
+            pipeline_id=pipeline_id
+        )
+
+        # 4. create branch + issue
+        branch_name = f"fix/pipeline-{pipeline_id}"
+        branch_created = False
+        try:
+            gitlab_agent.create_branch(branch_name)
+            branch_created = True
+        except Exception:
+            branch_created = False  # already exists is fine
+
+        issue_url = None
+        try:
+            issue = gitlab_agent.create_issue(
+                title=f"🐕 Gigi: Pipeline #{pipeline_id} Failed - Auto Diagnosis",
+                description=report
+            )
+            issue_url = issue.get("web_url") if isinstance(issue, dict) else None
+        except Exception:
+            pass
+
+        return {
+            "status": "success",
+            "pipeline_id": pipeline_id,
+            "pipeline_status": status,
+            "job_id": job["id"],
+            "rca": report,
+            "branch": branch_name if branch_created else f"{branch_name} (already existed)",
+            "issue": issue_url,
+        }
+
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+
+# legacy GET trigger (keep for backwards compat)
 @app.get("/analyze/{pipeline_id}")
 async def analyze_pipeline(pipeline_id: int, background_tasks: BackgroundTasks):
-    print(f"🚀 [Manual Trigger] Received request via browser for Pipeline #{pipeline_id}...")
     pipelines = gitlab_agent.get_pipelines()
     status = "failed"
     for p in pipelines:
-        if p['id'] == pipeline_id:
-            status = p['status']
+        if p["id"] == pipeline_id:
+            status = p["status"]
             break
-            
-    print(f"卫星 [Task Offloaded] Detached Pipeline #{pipeline_id} ({status}) to background worker threads.")
     background_tasks.add_task(process_pipeline_event, pipeline_id, status)
-    return {
-        "status": "processing started", 
-        "pipeline_id": pipeline_id, 
-        "gigi_action": "running in background threads 🐾"
-    }
+    return {"status": "processing started", "pipeline_id": pipeline_id, "gigi_action": "running in background 🐾"}
 
 
 @app.get("/health")
