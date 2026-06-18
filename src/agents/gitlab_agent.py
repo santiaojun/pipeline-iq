@@ -1,7 +1,6 @@
 import gitlab
 import os
 from dotenv import load_dotenv
-
 load_dotenv()
 
 class GitLabAgent:
@@ -11,10 +10,11 @@ class GitLabAgent:
             private_token=os.getenv('GITLAB_TOKEN')
         )
         self.project_id = os.getenv('GITLAB_PROJECT_ID')
-    
+        self.project_namespace = "santiaojun/pipeline-iq-demo"
+
     def get_project(self):
         return self.gl.projects.get(self.project_id)
-    
+
     def get_pipelines(self, limit=10):
         project = self.get_project()
         pipelines = project.pipelines.list(per_page=limit)
@@ -27,7 +27,7 @@ class GitLabAgent:
                 'ref': p.ref,
             })
         return result
-    
+
     def get_pipeline_jobs(self, pipeline_id):
         project = self.get_project()
         pipeline = project.pipelines.get(pipeline_id)
@@ -42,7 +42,7 @@ class GitLabAgent:
                 'stage': job.stage,
             })
         return result
-    
+
     def get_job_log(self, job_id):
         project = self.get_project()
         job = project.jobs.get(job_id)
@@ -50,7 +50,7 @@ class GitLabAgent:
             return job.trace().decode('utf-8')
         except:
             return "No log available"
-    
+
     def create_issue(self, title, description):
         project = self.get_project()
         issue = project.issues.create({
@@ -58,8 +58,11 @@ class GitLabAgent:
             'description': description,
             'labels': ['pipeline-iq', 'bug']
         })
-        return issue.iid
-    
+        return {
+            'iid': issue.iid,
+            'web_url': f"https://gitlab.com/{self.project_namespace}/-/issues/{issue.iid}"
+        }
+
     def create_branch(self, branch_name, ref='main'):
         project = self.get_project()
         branch = project.branches.create({
