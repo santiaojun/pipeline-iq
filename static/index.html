@@ -15,6 +15,7 @@
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
     @keyframes glow  { 0%,100%{opacity:0.7} 50%{opacity:1} }
     @keyframes spin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+    @keyframes chipglow { 0%,100%{box-shadow:0 0 4px #4ade8044} 50%{box-shadow:0 0 10px #4ade8088} }
     ::-webkit-scrollbar { width: 3px; }
     ::-webkit-scrollbar-track { background: #060606; }
     ::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
@@ -25,32 +26,34 @@
 <script type="text/babel">
 
 const { useState, useEffect, useRef } = React;
-
 const MONO = "'JetBrains Mono', monospace";
 const SYNE = "'Syne', sans-serif";
 
+// hardcode the demo pipeline ID that is known to work
+const DEMO_PIPELINE_ID = "2611893783";
+
 const PIPELINES_DEFAULT = [
+  { id: "2611893783", status: "failed",  action: "RCA Created", time: "22:28:21" },
   { id: "2566156044", status: "failed",  action: "RCA Created", time: "08:00:08" },
   { id: "2566154102", status: "success", action: "Monitored",   time: "07:45:22" },
   { id: "2566150088", status: "failed",  action: "RCA Created", time: "07:30:11" },
-  { id: "2566148003", status: "success", action: "Monitored",   time: "07:12:44" },
 ];
 
 const LOGS_DEFAULT = [
-  { id: 1,  time: "08:00:01", icon: "🔔", text: "Webhook intercepted: pipeline #2566156044", color: "#F59E0B" },
-  { id: 2,  time: "08:00:02", icon: "🐾", text: "Fetching job logs via GitLab API...",        color: "#60a5fa" },
-  { id: 3,  time: "08:00:03", icon: "📦", text: "Log size: 2.4KB · 3 jobs analyzed",          color: "#60a5fa" },
-  { id: 4,  time: "08:00:04", icon: "🤖", text: "Invoking Gemini-2.0-Flash...",               color: "#a78bfa" },
-  { id: 5,  time: "08:00:06", icon: "💭", text: "Analyzing root cause patterns...",           color: "#a78bfa" },
-  { id: 6,  time: "08:00:08", icon: "✓",  text: "RCA generated in 4.1s",                     color: "#4ade80" },
-  { id: 7,  time: "08:00:08", icon: "🎫", text: "Issue #2 published to GitLab",               color: "#4ade80" },
-  { id: 8,  time: "08:00:09", icon: "🌿", text: "Branch fix/pipeline-2566156044 created",     color: "#4ade80" },
-  { id: 9,  time: "08:00:09", icon: "👀", text: "Watching for next event...",                 color: "#999", blink: true },
+  { id:1,  time:"08:00:01", icon:"🔔", text:"Webhook intercepted: pipeline #2566156044", color:"#F59E0B" },
+  { id:2,  time:"08:00:02", icon:"🐾", text:"Fetching job logs via GitLab API...",        color:"#60a5fa" },
+  { id:3,  time:"08:00:03", icon:"📦", text:"Log size: 2.4KB · 3 jobs analyzed",          color:"#60a5fa" },
+  { id:4,  time:"08:00:04", icon:"🤖", text:"Invoking Gemini-2.0-Flash...",               color:"#a78bfa" },
+  { id:5,  time:"08:00:06", icon:"💭", text:"Analyzing root cause patterns...",           color:"#a78bfa" },
+  { id:6,  time:"08:00:08", icon:"✓",  text:"RCA generated in 4.1s",                     color:"#4ade80" },
+  { id:7,  time:"08:00:08", icon:"🎫", text:"Issue #2 published to GitLab",               color:"#4ade80" },
+  { id:8,  time:"08:00:09", icon:"🌿", text:"Branch fix/pipeline-2566156044 created",     color:"#4ade80" },
+  { id:9,  time:"08:00:09", icon:"👀", text:"Watching for next event...",                 color:"#999", blink:true },
 ];
 
 function GigiPixel({ size }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" style={{ imageRendering: "pixelated" }}>
+    <svg width={size} height={size} viewBox="0 0 16 16" style={{imageRendering:"pixelated"}}>
       <rect x="1" y="1" width="3" height="4" fill="#C49A3C"/>
       <rect x="2" y="2" width="2" height="3" fill="#E8C878"/>
       <rect x="12" y="1" width="3" height="4" fill="#C49A3C"/>
@@ -94,116 +97,97 @@ function CountUp({ target, duration }) {
 }
 
 function Grad({ children, a, b }) {
-  return (
-    <span style={{ background: "linear-gradient(90deg," + a + "," + b + ")", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
-      {children}
-    </span>
-  );
+  return <span style={{background:`linear-gradient(90deg,${a},${b})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>{children}</span>;
 }
 
 function Metric({ label, value, sub, sc, a, b }) {
   return (
-    <div style={{ padding: "16px 20px", borderRight: "0.5px solid #1a1a1a", background: "#080808", flex: 1 }}>
-      <div style={{ fontSize: 10, color: "#666", letterSpacing: "0.1em", marginBottom: 6, fontFamily: MONO }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 800, fontFamily: SYNE, marginBottom: 6 }}>
-        <Grad a={a} b={b}>{value}</Grad>
-      </div>
-      <div style={{ fontSize: 10, color: sc, fontFamily: MONO }}>{sub}</div>
+    <div style={{padding:"16px 20px",borderRight:"0.5px solid #1a1a1a",background:"#080808",flex:1}}>
+      <div style={{fontSize:10,color:"#666",letterSpacing:"0.1em",marginBottom:6,fontFamily:MONO}}>{label}</div>
+      <div style={{fontSize:24,fontWeight:800,fontFamily:SYNE,marginBottom:6}}><Grad a={a} b={b}>{value}</Grad></div>
+      <div style={{fontSize:10,color:sc,fontFamily:MONO}}>{sub}</div>
     </div>
   );
 }
 
 function ConsoleView({ logs }) {
   const ref = useRef(null);
-  useEffect(() => {
-    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [logs]);
+  useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight; }, [logs]);
   return (
-    <div ref={ref} style={{ flex: 1, padding: "12px 14px", fontFamily: MONO, fontSize: 11, lineHeight: 2, overflowY: "auto", background: "#060606", minHeight: 220 }}>
-      {logs.map(function(l) {
-        return (
-          <div key={l.id} style={{ display: "flex", gap: 8 }}>
-            {l.time ? <span style={{ color: "#888", minWidth: 70 }}>[{l.time}]</span> : <span style={{ minWidth: 70 }}></span>}
-            <span>{l.icon}</span>
-            <span style={{ color: l.color, animation: l.blink ? "blink 1s infinite" : "none" }}>
-              {l.text}{l.blink ? <span style={{ animation: "blink 1s infinite", color: "#4ade80" }}> ▋</span> : null}
-            </span>
-          </div>
-        );
-      })}
+    <div ref={ref} style={{flex:1,padding:"12px 14px",fontFamily:MONO,fontSize:11,lineHeight:2,overflowY:"auto",background:"#060606",minHeight:220}}>
+      {logs.map(l => (
+        <div key={l.id} style={{display:"flex",gap:8}}>
+          {l.time ? <span style={{color:"#888",minWidth:70}}>[{l.time}]</span> : <span style={{minWidth:70}}/>}
+          <span>{l.icon}</span>
+          <span style={{color:l.color,animation:l.blink?"blink 1s infinite":"none"}}>
+            {l.text}{l.blink && <span style={{animation:"blink 1s infinite",color:"#4ade80"}}> ▋</span>}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
 
 function ReportCard({ report }) {
   return (
-    <div style={{ background: "#0a0a0a", border: "0.5px solid #1a1a1a", borderRadius: 6, padding: 12, fontSize: 11, lineHeight: 1.8 }}>
-      <div style={{ color: "#e0e0e0", fontWeight: 600, marginBottom: 6, fontSize: 12 }}>{report.title}</div>
-      <div>
-        <span style={{ color: "#818CF8" }}>RCA: </span>
-        <span style={{ color: "#999" }}>{report.rca}</span>
-      </div>
-      <div style={{ marginTop: 6 }}>
-        <span style={{ color: "#818CF8" }}>Fix: </span>
-        <span style={{ color: "#999" }}>{report.fix}</span>
-      </div>
+    <div style={{background:"#0a0a0a",border:"0.5px solid #1a1a1a",borderRadius:6,padding:12,fontSize:11,lineHeight:1.8}}>
+      <div style={{color:"#e0e0e0",fontWeight:600,marginBottom:6,fontSize:12}}>{report.title}</div>
+      <div><span style={{color:"#818CF8"}}>RCA: </span><span style={{color:"#999"}}>{report.rca}</span></div>
+      <div style={{marginTop:6}}><span style={{color:"#818CF8"}}>Fix: </span><span style={{color:"#999"}}>{report.fix}</span></div>
       {report.action && (
-        <div style={{ color: "#4ade80", marginTop: 8, fontSize: 10, animation: "glow 2s infinite" }}>
-          ✓ {report.action}
-        </div>
+        <div style={{color:"#4ade80",marginTop:8,fontSize:10,animation:"glow 2s infinite"}}>✓ {report.action}</div>
       )}
-      {report.issue && (
-        <a href={report.issue} target="_blank" rel="noreferrer"
-          style={{ display: "inline-block", marginTop: 6, fontSize: 10, color: "#60a5fa", textDecoration: "none" }}>
-          🎫 View GitLab Issue →
+      {report.issue_url && (
+        <a href={report.issue_url} target="_blank" rel="noreferrer"
+          style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:10,padding:"6px 12px",background:"#0d1a0d",border:"0.5px solid #1a4a1a",borderRadius:4,fontSize:10,color:"#4ade80",textDecoration:"none",fontFamily:MONO}}>
+          🎫 View Live GitLab Issue →
         </a>
       )}
     </div>
   );
 }
 
-function now() {
-  return new Date().toTimeString().slice(0, 8);
-}
+function now() { return new Date().toTimeString().slice(0,8); }
 
 function Dashboard() {
-  const [logs, setLogs]           = useState(LOGS_DEFAULT);
+  const [logs, setLogs]       = useState(LOGS_DEFAULT);
   const [pipelines, setPipelines] = useState(PIPELINES_DEFAULT);
-  const [report, setReport]       = useState({
-    title: "Gigi Failure Diagnosis Report [Job #999]",
-    rca: "Woof! Some sloppy JavaScript code tried to fetch a toy from a variable that was completely empty — barking about an 'undefined' mess at master.js line 12!",
-    fix: "Inspect master.js line 12 and identify which variable is undefined before accessing its properties.",
-    action: "Branch fix/pipeline-2566156044 created · Issue #2 published",
+  const [report, setReport]   = useState({
+    title: "Gigi Failure Diagnosis Report [Pipeline #2611893783]",
+    rca: "Woof! The test-job stage exited with code 1 — a deliberate failure signal. The script ran echo then immediately called exit 1, terminating the job before any real work completed.",
+    fix: "Remove or replace the exit 1 command in the test-job script with a real test runner command.",
+    action: "Branch fix/pipeline-2611893783 created · Issue published",
+    issue_url: "https://gitlab.com/santiaojun/pipeline-iq-demo/-/issues",
   });
-  const [inputId, setInputId]     = useState("");
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState(null);
+  const [inputId, setInputId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
 
   function addLog(icon, text, color, blink) {
     setLogs(prev => {
-      var base = prev.filter(function(l) { return !l.blink; });
-      var next = { id: Date.now() + Math.random(), time: now(), icon: icon, text: text, color: color || "#e0e0e0" };
+      const base = prev.filter(l => !l.blink);
+      const next = { id: Date.now() + Math.random(), time: now(), icon, text, color: color || "#e0e0e0" };
       if (blink) next.blink = true;
-      return base.concat([next]);
+      return [...base, next];
     });
   }
 
-  async function handleAnalyze() {
-    var pid = inputId.trim();
-    if (!pid || loading) return;
+  async function runAnalysis(pid) {
+    if (loading) return;
     setError(null);
     setLoading(true);
+    setInputId(pid);
 
-    addLog("🔔", "Manual trigger: pipeline #" + pid, "#F59E0B");
+    addLog("🔔", `Manual trigger: pipeline #${pid}`, "#F59E0B");
     addLog("🐾", "Fetching job logs via GitLab API...", "#60a5fa");
 
     try {
-      var res = await fetch("/api/analyze", {
+      const res = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ pipeline_id: parseInt(pid) }),
       });
-      var data = await res.json();
+      const data = await res.json();
 
       if (data.status === "error") {
         addLog("❌", "Error: " + data.message, "#f87171");
@@ -213,30 +197,22 @@ function Dashboard() {
       }
 
       addLog("🤖", "Invoking Gemini-2.0-Flash...", "#a78bfa");
-      addLog("✓",  "RCA generated · Job #" + (data.job_id || "—"), "#4ade80");
-
-      if (data.branch) addLog("🌿", "Branch " + data.branch + " created", "#4ade80");
-      if (data.issue)  addLog("🎫", "Issue published to GitLab", "#4ade80");
+      addLog("✓",  `RCA generated · Job #${data.job_id || "—"}`, "#4ade80");
+      if (data.branch)    addLog("🌿", `Branch ${data.branch} created`, "#4ade80");
+      if (data.issue_url) addLog("🎫", "Issue published to GitLab", "#4ade80");
       addLog("👀", "Watching for next event...", "#999", true);
 
-      // update pipeline table
-      setPipelines(function(prev) {
-        var newRow = {
-          id: pid,
-          status: data.pipeline_status || "failed",
-          action: "RCA Created",
-          time: now(),
-        };
-        return [newRow].concat(prev.slice(0, 3));
+      setPipelines(prev => {
+        const newRow = { id: pid, status: data.pipeline_status || "failed", action: "RCA Created", time: now() };
+        return [newRow, ...prev.slice(0, 3)];
       });
 
-      // update report
       setReport({
-        title: "Gigi Failure Diagnosis Report [Job #" + (data.job_id || pid) + "]",
+        title: `Gigi Failure Diagnosis Report [Job #${data.job_id || pid}]`,
         rca: data.rca || "No RCA returned.",
         fix: data.fix || "Review the generated GitLab issue for details.",
-        action: [data.branch, data.issue ? "Issue published" : null].filter(Boolean).join(" · "),
-        issue: data.issue,
+        action: [data.branch, data.issue_url ? "Issue published" : null].filter(Boolean).join(" · "),
+        issue_url: data.issue_url,
       });
 
     } catch (e) {
@@ -246,154 +222,143 @@ function Dashboard() {
     setLoading(false);
   }
 
-  function handleKeyDown(e) {
-    if (e.key === "Enter") handleAnalyze();
-  }
-
   return (
-    <div style={{ background: "#060606", color: "#e0e0e0", fontFamily: MONO, fontSize: 12, minHeight: "100vh" }}>
+    <div style={{background:"#060606",color:"#e0e0e0",fontFamily:MONO,fontSize:12,minHeight:"100vh"}}>
 
       {/* topbar */}
-      <div style={{ background: "#0a0a0a", borderBottom: "0.5px solid #1a1a1a", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{background:"#0a0a0a",borderBottom:"0.5px solid #1a1a1a",padding:"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
           <GigiPixel size={40} />
           <div>
-            <div style={{ fontFamily: SYNE, fontSize: 16, fontWeight: 800, background: "linear-gradient(90deg,#fff,#aaa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
-              PipelineIQ
-            </div>
-            <div style={{ fontSize: 10, color: "#888", letterSpacing: "0.08em" }}>Intelligent DevOps Agent · Powered by Gigi</div>
+            <div style={{fontFamily:SYNE,fontSize:16,fontWeight:800,background:"linear-gradient(90deg,#fff,#aaa)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>PipelineIQ</div>
+            <div style={{fontSize:10,color:"#888",letterSpacing:"0.08em"}}>Intelligent DevOps Agent · Powered by Gigi</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{display:"flex",gap:8}}>
           {[
-            { label: "v1.0.0 Beta",      bg: "#0d1a2a", border: "#1a3a5a", color: "#60a5fa", dot: false },
-            { label: "GitLab Connected", bg: "#0d2a0d", border: "#1a4a1a", color: "#4ade80", dot: true  },
-            { label: "Webhook Active",   bg: "#0d2a0d", border: "#1a4a1a", color: "#4ade80", dot: true  },
-          ].map(function(b, i) {
-            return (
-              <span key={i} style={{ padding: "3px 10px", borderRadius: 4, fontSize: 10, letterSpacing: "0.08em", background: b.bg, border: "0.5px solid " + b.border, color: b.color, display: "inline-flex", alignItems: "center", gap: 5, fontFamily: MONO }}>
-                {b.dot ? <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#4ade80", animation: "pulse 2s infinite", display: "inline-block" }} /> : null}
-                {b.label}
-              </span>
-            );
-          })}
+            {label:"v1.0.0 Beta",      bg:"#0d1a2a",border:"#1a3a5a",color:"#60a5fa",dot:false},
+            {label:"GitLab Connected", bg:"#0d2a0d",border:"#1a4a1a",color:"#4ade80",dot:true},
+            {label:"Webhook Active",   bg:"#0d2a0d",border:"#1a4a1a",color:"#4ade80",dot:true},
+          ].map((b,i) => (
+            <span key={i} style={{padding:"3px 10px",borderRadius:4,fontSize:10,letterSpacing:"0.08em",background:b.bg,border:`0.5px solid ${b.border}`,color:b.color,display:"inline-flex",alignItems:"center",gap:5,fontFamily:MONO}}>
+              {b.dot && <span style={{width:5,height:5,borderRadius:"50%",background:"#4ade80",animation:"pulse 2s infinite",display:"inline-block"}}/>}
+              {b.label}
+            </span>
+          ))}
         </div>
       </div>
 
       {/* metrics */}
-      <div style={{ display: "flex", borderBottom: "0.5px solid #1a1a1a" }}>
-        <Metric label="AI INTERCEPTION" value={<span><CountUp target={100} />%</span>}                   sub="🟢 All pipelines covered"   sc="#2a5a2a" a="#fff"    b="#ccc"    />
-        <Metric label="AVG. MTTD"       value="14.2s"                                                    sub="📉 Reduced by 99.4%"        sc="#2a5a5a" a="#4ade80" b="#2DD4BF" />
-        <Metric label="ACTIONS TAKEN"   value={<CountUp target={42} />}                                 sub="🌿 fix/pipeline-* branches" sc="#2a2a5a" a="#818CF8" b="#C084FC" />
-        <Metric label="ANNUAL SAVINGS"  value={<span>$<CountUp target={2620} duration={1800} /></span>} sub="💵 FinOps verified"          sc="#5a3a0a" a="#F59E0B" b="#EF4444" />
+      <div style={{display:"flex",borderBottom:"0.5px solid #1a1a1a"}}>
+        <Metric label="AI INTERCEPTION" value={<span><CountUp target={100}/>%</span>}                   sub="🟢 All pipelines covered"   sc="#2a5a2a" a="#fff"    b="#ccc"   />
+        <Metric label="AVG. MTTD"       value="14.2s"                                                   sub="📉 Reduced by 99.4%"        sc="#2a5a5a" a="#4ade80" b="#2DD4BF"/>
+        <Metric label="ACTIONS TAKEN"   value={<CountUp target={42}/>}                                  sub="🌿 fix/pipeline-* branches" sc="#2a2a5a" a="#818CF8" b="#C084FC"/>
+        <Metric label="ANNUAL SAVINGS"  value={<span>$<CountUp target={2620} duration={1800}/></span>}  sub="💵 FinOps verified"          sc="#5a3a0a" a="#F59E0B" b="#EF4444"/>
       </div>
 
       {/* main grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 0.85fr" }}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 0.85fr"}}>
 
         {/* left */}
-        <div style={{ borderRight: "0.5px solid #1a1a1a", display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 10, color: "#666", letterSpacing: "0.15em", padding: "10px 16px", borderBottom: "0.5px solid #111" }}>
+        <div style={{borderRight:"0.5px solid #1a1a1a",display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:10,color:"#666",letterSpacing:"0.15em",padding:"10px 16px",borderBottom:"0.5px solid #111"}}>
             📊 ACTIVE PIPELINE INTERCEPTION STREAM
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead>
-              <tr>
-                {["PIPELINE ID","STATUS","GIGI ACTION","TIME"].map(function(h) {
-                  return <th key={h} style={{ fontSize: 10, color: "#888", letterSpacing: "0.1em", padding: "8px 12px", textAlign: "left", borderBottom: "0.5px solid #111", fontWeight: 400, fontFamily: MONO }}>{h}</th>;
-                })}
-              </tr>
+              <tr>{["PIPELINE ID","STATUS","GIGI ACTION","TIME"].map(h => (
+                <th key={h} style={{fontSize:10,color:"#888",letterSpacing:"0.1em",padding:"8px 12px",textAlign:"left",borderBottom:"0.5px solid #111",fontWeight:400,fontFamily:MONO}}>{h}</th>
+              ))}</tr>
             </thead>
             <tbody>
-              {pipelines.map(function(p, i) {
-                var isFail = p.status === "failed";
+              {pipelines.map((p,i) => {
+                const isFail = p.status === "failed";
                 return (
-                  <tr key={p.id + "-" + i}>
-                    <td style={{ padding: "9px 12px", borderBottom: "0.5px solid #0f0f0f", color: "#e0e0e0" }}>#{p.id}</td>
-                    <td style={{ padding: "9px 12px", borderBottom: "0.5px solid #0f0f0f", color: isFail ? "#f87171" : "#4ade80" }}>
-                      {isFail ? "❌ Failed" : "✅ Success"}
-                    </td>
-                    <td style={{ padding: "9px 12px", borderBottom: "0.5px solid #0f0f0f" }}>
-                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 3, background: isFail ? "#1a0808" : "#0a1a0a", border: "0.5px solid " + (isFail ? "#3a1a1a" : "#1a3a1a"), color: isFail ? "#f87171" : "#4ade80", fontFamily: MONO }}>
-                        {p.action} {isFail ? "🐕" : "✓"}
+                  <tr key={p.id+"-"+i}>
+                    <td style={{padding:"9px 12px",borderBottom:"0.5px solid #0f0f0f",color:"#e0e0e0"}}>#{p.id}</td>
+                    <td style={{padding:"9px 12px",borderBottom:"0.5px solid #0f0f0f",color:isFail?"#f87171":"#4ade80"}}>{isFail?"❌ Failed":"✅ Success"}</td>
+                    <td style={{padding:"9px 12px",borderBottom:"0.5px solid #0f0f0f"}}>
+                      <span style={{fontSize:10,padding:"2px 8px",borderRadius:3,background:isFail?"#1a0808":"#0a1a0a",border:`0.5px solid ${isFail?"#3a1a1a":"#1a3a1a"}`,color:isFail?"#f87171":"#4ade80",fontFamily:MONO}}>
+                        {p.action} {isFail?"🐕":"✓"}
                       </span>
                     </td>
-                    <td style={{ padding: "9px 12px", borderBottom: "0.5px solid #0f0f0f", color: "#888" }}>{p.time}</td>
+                    <td style={{padding:"9px 12px",borderBottom:"0.5px solid #0f0f0f",color:"#888"}}>{p.time}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
 
-          <div style={{ padding: "14px 16px", borderTop: "0.5px solid #111", flex: 1 }}>
-            <div style={{ fontSize: 10, color: "#666", letterSpacing: "0.15em", marginBottom: 10 }}>🔍 LATEST GENERATIVE INSIGHTS</div>
+          <div style={{padding:"14px 16px",borderTop:"0.5px solid #111",flex:1}}>
+            <div style={{fontSize:10,color:"#666",letterSpacing:"0.15em",marginBottom:10}}>🔍 LATEST GENERATIVE INSIGHTS</div>
             <ReportCard report={report} />
           </div>
         </div>
 
         {/* right */}
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 10, color: "#666", letterSpacing: "0.15em", padding: "10px 16px", borderBottom: "0.5px solid #111" }}>
+        <div style={{display:"flex",flexDirection:"column"}}>
+          <div style={{fontSize:10,color:"#666",letterSpacing:"0.15em",padding:"10px 16px",borderBottom:"0.5px solid #111"}}>
             🐾 GIGI'S COGNITIVE LIVE CONSOLE
           </div>
           <ConsoleView logs={logs} />
 
-          {/* ── real analyze input ── */}
-          <div style={{ padding: "14px 16px", borderTop: "0.5px solid #111" }}>
-            <div style={{ fontSize: 10, color: "#666", letterSpacing: "0.15em", marginBottom: 10 }}>⚡ ANALYZE A REAL PIPELINE</div>
+          <div style={{padding:"14px 16px",borderTop:"0.5px solid #111"}}>
+            <div style={{fontSize:10,color:"#666",letterSpacing:"0.15em",marginBottom:8}}>⚡ ANALYZE A REAL PIPELINE</div>
 
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                type="text"
-                placeholder="Enter Pipeline ID (e.g. 2566156044)"
-                value={inputId}
-                onChange={function(e) { setInputId(e.target.value); }}
-                onKeyDown={handleKeyDown}
+            {/* quick demo chip */}
+            <div style={{marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:10,color:"#555",fontFamily:MONO}}>Quick demo:</span>
+              <button
+                onClick={() => runAnalysis(DEMO_PIPELINE_ID)}
                 disabled={loading}
                 style={{
-                  flex: 1,
-                  background: "#0d0d0d",
-                  border: "0.5px solid #333",
-                  borderRadius: 6,
-                  padding: "9px 12px",
-                  color: "#e0e0e0",
-                  fontFamily: MONO,
-                  fontSize: 11,
-                  outline: "none",
-                }}
-              />
-              <button
-                onClick={handleAnalyze}
-                disabled={loading || !inputId.trim()}
-                style={{
-                  background: loading ? "#0d0d0d" : "#0f1f0f",
-                  border: "0.5px solid " + (loading ? "#222" : "#1a4a1a"),
-                  borderRadius: 6,
-                  padding: "9px 14px",
-                  color: loading ? "#555" : "#4ade80",
-                  fontFamily: MONO,
-                  fontSize: 11,
-                  cursor: loading || !inputId.trim() ? "not-allowed" : "pointer",
-                  whiteSpace: "nowrap",
-                  minWidth: 90,
+                  padding:"3px 10px",borderRadius:4,fontSize:10,fontFamily:MONO,
+                  background:"#0d2a0d",border:"0.5px solid #1a4a1a",color:"#4ade80",
+                  cursor:loading?"not-allowed":"pointer",
+                  animation:"chipglow 2s infinite",
+                  display:"inline-flex",alignItems:"center",gap:5,
                 }}
               >
-                {loading
-                  ? <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ display: "inline-block", width: 10, height: 10, border: "1.5px solid #555", borderTopColor: "#4ade80", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                      Running
-                    </span>
-                  : "🐾 Run Gigi"}
+                <span style={{width:5,height:5,borderRadius:"50%",background:"#4ade80",animation:"pulse 2s infinite",display:"inline-block"}}/>
+                🐾 Run Live Demo (Pipeline #{DEMO_PIPELINE_ID})
               </button>
             </div>
 
-            {error && (
-              <div style={{ marginTop: 8, fontSize: 10, color: "#f87171", fontFamily: MONO }}>
-                ❌ {error}
-              </div>
-            )}
+            {/* manual input */}
+            <div style={{display:"flex",gap:8}}>
+              <input
+                type="text"
+                placeholder="Or enter any Pipeline ID..."
+                value={inputId}
+                onChange={e => setInputId(e.target.value)}
+                onKeyDown={e => e.key==="Enter" && runAnalysis(inputId.trim())}
+                disabled={loading}
+                style={{flex:1,background:"#0d0d0d",border:"0.5px solid #333",borderRadius:6,padding:"9px 12px",color:"#e0e0e0",fontFamily:MONO,fontSize:11,outline:"none"}}
+              />
+              <button
+                onClick={() => runAnalysis(inputId.trim())}
+                disabled={loading || !inputId.trim()}
+                style={{
+                  background:loading?"#0d0d0d":"#0f1f0f",
+                  border:`0.5px solid ${loading?"#222":"#1a4a1a"}`,
+                  borderRadius:6,padding:"9px 14px",
+                  color:loading?"#555":"#4ade80",
+                  fontFamily:MONO,fontSize:11,
+                  cursor:(loading||!inputId.trim())?"not-allowed":"pointer",
+                  whiteSpace:"nowrap",minWidth:90,
+                }}
+              >
+                {loading
+                  ? <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                      <span style={{width:10,height:10,border:"1.5px solid #555",borderTopColor:"#4ade80",borderRadius:"50%",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
+                      Running
+                    </span>
+                  : "Run Gigi"}
+              </button>
+            </div>
 
-            <div style={{ marginTop: 8, fontSize: 10, color: "#444", fontFamily: MONO }}>
+            {error && <div style={{marginTop:8,fontSize:10,color:"#f87171",fontFamily:MONO}}>❌ {error}</div>}
+            <div style={{marginTop:8,fontSize:10,color:"#444",fontFamily:MONO}}>
               Fetches real GitLab logs → Gemini RCA → auto-creates branch + issue
             </div>
           </div>
